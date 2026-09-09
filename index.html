@@ -262,7 +262,7 @@ const PRESETS = [
 /* ───────────── 상태 ───────────── */
 const ROOMS=['놀이체험존','유아체험존'];
 const state = { room:'놀이체험존', items:[], zones:[], sel:null, view:'plan', opts:{grid:true,snap:true,ceiling:true,labels:true,blinds:true,mat:false}, H:270, layout:null };
-const LAYOUT_VERS = { '놀이체험존':4, '유아체험존':2 }; // 배치안을 고칠 때마다 올림 → 예전 저장본을 자동 갱신
+const LAYOUT_VERS = { '놀이체험존':5, '유아체험존':2 }; // 배치안을 고칠 때마다 올림 → 예전 저장본을 자동 갱신
 const LS='gimhae-newclass-v1';
 let uid = 1;
 function newId(){ return 'f'+(uid++)+'-'+Math.random().toString(36).slice(2,6); }
@@ -819,7 +819,7 @@ const LAYOUTS = {
     // 도서용 책장 — 뒤 벽(서)에 붙여 교실 안쪽을 봄
     add({name:'도서용 책장', w:160, d:30, h:90, x:16, y:510, rot:90, color:'#d9bf94', shape:'cubby', cols:4, rows:2});
     // 현수막 3장 — 뒤 벽(서) 게시판 위, 책상 높이(72 cm)부터 위로
-    [['현수막: 자율주행의 수학 원리',110,'#f7f4ea'],['현수막: 활동 방법',230,'#eef4f7'],['현수막: 교실 이용 안내',350,'#f7f0e6']].forEach(([name,y,color])=>add({name, w:100, d:1.5, h:150, x:2, y, z:72, rot:90, color}));
+    [['현수막: 자율주행의 수학 원리',110,'#f7f4ea'],['현수막: 활동 방법',230,'#eef4f7'],['현수막: 교실 이용 안내',350,'#f7f0e6']].forEach(([name,y,color])=>add({name, w:100, d:1.5, h:150, x:5, y, z:72, rot:90, color}));
     return {items:L, zones:L.zones, mat:false};
   })(),
   '유아체험존': (()=>{
