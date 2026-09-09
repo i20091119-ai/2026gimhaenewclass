@@ -219,7 +219,7 @@ details td:first-child{font-family:var(--mono);color:var(--ink-2);white-space:no
 </div>
 <div id="toast" role="status"></div>
 
-<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js" onerror="(function(){var s=document.createElement('script');s.src='https://cdn.jsdelivr.net/npm/three@0.128.0/build/three.min.js';document.head.appendChild(s);})()"></script>
+<script src="vendor/three.min.js" onerror="(function(){var s=document.createElement('script');s.src='https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js';s.onerror=function(){var t=document.createElement('script');t.src='https://cdn.jsdelivr.net/npm/three@0.128.0/build/three.min.js';document.head.appendChild(t);};document.head.appendChild(s);})()"></script>
 <script>
 (function(){
 'use strict';
