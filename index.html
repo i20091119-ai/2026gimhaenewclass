@@ -109,7 +109,6 @@ details td:first-child{font-family:var(--mono);color:var(--ink-2);white-space:no
     <h1>김해 새교실 스튜디오 <small>865 × 715 cm</small></h1>
     <div class="tabs" role="tablist">
       <button role="tab" data-view="plan" aria-pressed="true">평면도</button>
-      <button role="tab" data-view="iso" aria-pressed="false">조감도</button>
       <button role="tab" data-view="3d" aria-pressed="false">3D</button>
     </div>
     <div class="tools">
@@ -427,8 +426,8 @@ plan.addEventListener('pointercancel',()=>{ drag=null; });
 
 /* ───────────── 3D (three.js) ───────────── */
 let T3=null; // {renderer, scene, room, furn, camP, camO, ...}
-const cam = { theta:-0.55, phi:0.9, radius:1500, target:null, osize:520 };
-function resetCam(){ cam.theta=-0.55; cam.phi=0.9; cam.radius=1500; cam.osize=520; if(T3) cam.target.set(ROOM.W/2, 40, -ROOM.D/2); invalidate(); }
+const cam = { theta:-0.55, phi:0.9, radius:1500, target:null };
+function resetCam(){ cam.theta=-0.55; cam.phi=0.9; cam.radius=1500; if(T3) cam.target.set(ROOM.W/2, 40, -ROOM.D/2); invalidate(); }
 let needRender=true; function invalidate(){ needRender=true; }
 
 function init3D(){
@@ -440,9 +439,8 @@ function init3D(){
   const sun=new THREE.DirectionalLight(0xffffff,0.4); sun.position.set(300,900,700); scene.add(sun);
   const sun2=new THREE.DirectionalLight(0xffffff,0.2); sun2.position.set(-500,600,-400); scene.add(sun2);
   const camP=new THREE.PerspectiveCamera(50,1,5,20000);
-  const camO=new THREE.OrthographicCamera(-1,1,1,-1,-6000,6000);
   cam.target=new THREE.Vector3(ROOM.W/2,40,-ROOM.D/2);
-  T3={renderer,scene,camP,camO,room:null,furn:new THREE.Group(),walls:{south:[],north:[],west:[],east:[]},ceil:[],meshes:new Map(),ray:new THREE.Raycaster()};
+  T3={renderer,scene,camP,room:null,furn:new THREE.Group(),walls:{south:[],north:[],west:[],east:[]},ceil:[],meshes:new Map(),ray:new THREE.Raycaster()};
   scene.add(T3.furn);
   buildRoom(); rebuildFurniture();
   setupControls();
@@ -640,20 +638,19 @@ function update3DItem(it){
   e.m.material.emissive.setHex(it.id===state.sel?0x8a3a10:0x000000);
   invalidate();
 }
-function currentCam(){ return state.view==='iso'? T3.camO : T3.camP; }
+function currentCam(){ return T3.camP; }
 function draw(){
   const THREE=window.THREE, c=currentCam();
   const sp=cam.phi, st=cam.theta;
   const dir=new THREE.Vector3(Math.sin(sp)*Math.sin(st), Math.cos(sp), Math.sin(sp)*Math.cos(st));
-  const r = state.view==='iso'? 3000 : cam.radius;
+  const r = cam.radius;
   c.position.copy(cam.target).addScaledVector(dir,r); c.up.set(0,1,0); c.lookAt(cam.target);
-  if(state.view==='iso'){ const asp=viewport.clientWidth/viewport.clientHeight; c.top=cam.osize; c.bottom=-cam.osize; c.left=-cam.osize*asp; c.right=cam.osize*asp; c.updateProjectionMatrix(); }
   // 카메라를 향한 벽은 투명하게 (조감도) / 3D에서는 카메라가 천장 위일 때만
   const above = c.position.y > ROOM.H;
   const normals={south:[0,0,1],north:[0,0,-1],west:[-1,0,0],east:[1,0,0]};
   Object.keys(T3.walls).forEach(k=>{
     const n=normals[k]; const d=n[0]*dir.x+n[2]*dir.z;
-    const fade = (state.view==='iso' || above) && d>0.12;
+    const fade = above && d>0.12;
     T3.walls[k].forEach(m=>{ m.material.transparent=true; m.material.opacity = fade? 0.08 : m.userData.op; m.material.depthWrite=!fade; });
   });
   T3.ceil.forEach(m=>{ m.visible = state.opts.ceiling && state.view==='3d' && !above; });
@@ -664,7 +661,7 @@ function setupControls(){
   const pan=(dx,dy)=>{
     const THREE=window.THREE, c=currentCam();
     const right=new THREE.Vector3(), up=new THREE.Vector3(); c.matrixWorld.extractBasis(right,up,new THREE.Vector3());
-    const k = state.view==='iso' ? (2*cam.osize/viewport.clientHeight) : cam.radius*0.0016;
+    const k = cam.radius*0.0016;
     cam.target.addScaledVector(right,-dx*k).addScaledVector(up,dy*k); invalidate();
   };
   gl.addEventListener('pointerdown',ev=>{ gl.setPointerCapture(ev.pointerId); ptrs.set(ev.pointerId,{x:ev.clientX,y:ev.clientY}); last={x:ev.clientX,y:ev.clientY}; downAt={x:ev.clientX,y:ev.clientY,b:ev.button,shift:ev.shiftKey}; if(ptrs.size===2){ const a=[...ptrs.values()]; pinch={d:Math.hypot(a[0].x-a[1].x,a[0].y-a[1].y), cx:(a[0].x+a[1].x)/2, cy:(a[0].y+a[1].y)/2}; } });
@@ -679,7 +676,7 @@ function setupControls(){
   gl.addEventListener('pointerup',up); gl.addEventListener('pointercancel',up);
   gl.addEventListener('contextmenu',ev=>ev.preventDefault());
   gl.addEventListener('wheel',ev=>{ ev.preventDefault(); zoom(Math.pow(1.1, ev.deltaY/100)); },{passive:false});
-  function zoom(f){ if(state.view==='iso') cam.osize=clamp(cam.osize*f,80,2000); else cam.radius=clamp(cam.radius*f,60,6000); invalidate(); }
+  function zoom(f){ cam.radius=clamp(cam.radius*f,60,6000); invalidate(); }
   function pick(ev){
     const THREE=window.THREE, rect=gl.getBoundingClientRect();
     const v=new THREE.Vector2(((ev.clientX-rect.left)/rect.width)*2-1, -((ev.clientY-rect.top)/rect.height)*2+1);
@@ -690,8 +687,7 @@ function setupControls(){
 }
 function eyeView(where){
   if(!T3) return;
-  state.view==='plan' && setView('3d');
-  if(state.view==='iso') setView('3d');
+  if(state.view!=='3d') setView('3d');
   cam.phi=1.48; cam.radius=430; cam.target.set(ROOM.W/2,125,-ROOM.D/2);
   if(where==='back'){ cam.theta=-Math.PI/2; cam.target.set(ROOM.W*0.55,125,-ROOM.D/2); } // 서쪽(뒤)에서 동쪽을 봄
   else { cam.theta=0; cam.radius=300; cam.target.set(ROOM.W/2,125,-ROOM.D*0.6); } // 창가(남)에서 복도쪽을 봄
@@ -700,13 +696,14 @@ function eyeView(where){
 
 /* ───────────── UI ───────────── */
 function setView(v){
+  if(v==='iso') v='3d';
   state.view=v;
   document.querySelectorAll('.tabs button').forEach(b=>b.setAttribute('aria-pressed', String(b.dataset.view===v)));
   const three = v!=='plan';
   plan.style.display=three?'none':'block'; gl.style.display=three?'block':'none';
   $('#btnReset').hidden=!three; $('#btnEyeBack').hidden=!three; $('#btnEyeWin').hidden=!three;
   $('#compass').hidden=!three;
-  $('#hint').textContent = v==='plan' ? '가구를 끌어서 옮기기 · 빈 곳 클릭으로 선택 해제' : (v==='iso' ? '끌기 회전 · 휠/두 손가락 확대 · Shift+끌기(또는 오른쪽 버튼) 이동 · 클릭으로 가구 선택' : '끌기 회전 · 휠 확대 · Shift+끌기 이동 · 눈높이 버튼으로 교실 안에서 보기');
+  $('#hint').textContent = v==='plan' ? '가구를 끌어서 옮기기 · 빈 곳 클릭으로 선택 해제' : '끌기 회전 · 휠/두 손가락 확대 · Shift+끌기(또는 오른쪽 버튼) 이동 · 클릭으로 가구 선택 · 눈높이 버튼으로 교실 안에서 보기';
   $('#compass').innerHTML = '아래쪽 = 창문(남)<br>위쪽 = 복도(북)<br>오른쪽 = 앞 벽(동)';
   if(three){ if(!T3 && window.THREE) init3D(); else if(!T3) $('#nothree').style.display='grid'; resize3D(); invalidate(); }
   try{ localStorage.setItem(LS+'-view',v); }catch(e){}
@@ -763,9 +760,8 @@ const LAYOUTS = {
     const L=[]; const add=(o)=>L.push(Object.assign({rot:0,z:0,shape:'box'},o));
     // 알티노 주행체험 경기장 2개 (3×2 m, 바퀴 이동식) — 창문 쪽
     [[665,'①'],[250,'②']].forEach(([cx,n])=>{
-      add({name:`알티노 주행체험 ${n}`, w:300, d:200, h:75, x:cx, y:165, color:'#26335f', shape:'field'});
-      add({name:'알티노', w:19, d:11, h:8, x:cx-60, y:150, z:75, color:'#3a3f47', rot:20});
-      [-95,0,95].forEach(dx=>add({name:'의자', w:55, d:55, h:80, x:cx+dx, y:310, color:'#f0f0ee'}));
+      add({name:`알티노 주행체험 ${n}`, w:300, d:200, h:75, x:cx, y:106, color:'#26335f', shape:'field'}); // 창턱(4cm) 바로 앞까지 붙임
+      add({name:'알티노', w:19, d:11, h:8, x:cx-60, y:90, z:75, color:'#3a3f47', rot:20});
     });
     // 책상 4 (사다리꼴, 긴 변이 복도 쪽) + 의자 2씩
     [[560,400],[370,400],[560,545],[370,545]].forEach(([x,y])=>{
@@ -831,7 +827,7 @@ load(); $('#inH').value=state.H;
 document.querySelectorAll('[data-o]').forEach(cb=>cb.checked=!!state.opts[cb.dataset.o]);
 renderPlan(true); renderList(); fillEditor();
 let v0='plan'; try{ v0=localStorage.getItem(LS+'-view')||'plan'; }catch(e){}
-if(location.hash.includes('d=')) v0='iso';
+if(location.hash.includes('d=')) v0='3d';
 // three.js 로딩 대기 (CDN 대체 로딩 포함)
 let waited=0; (function wait(){ if(window.THREE){ if(v0!=='plan') setView(v0); else setView('plan'); return; } waited+=100; if(waited>12000){ setView('plan'); return; } setTimeout(wait,100); })();
 setView(v0==='plan'?'plan':'plan'); // 평면도는 즉시 표시, 3D는 로딩 후 전환
