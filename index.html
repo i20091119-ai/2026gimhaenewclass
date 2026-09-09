@@ -251,7 +251,8 @@ const PRESETS = [
 ];
 
 /* ───────────── 상태 ───────────── */
-const state = { items:[], sel:null, view:'plan', opts:{grid:true,snap:true,ceiling:true,labels:true}, H:270 };
+const state = { items:[], sel:null, view:'plan', opts:{grid:true,snap:true,ceiling:true,labels:true}, H:270, layout:null };
+const LAYOUT_VER = 3; // 배치안을 고칠 때마다 올림 → 예전 저장본을 자동 갱신
 const LS='gimhae-newclass-v1';
 let uid = 1;
 function newId(){ return 'f'+(uid++)+'-'+Math.random().toString(36).slice(2,6); }
@@ -261,12 +262,12 @@ function load(){
   const m = location.hash.match(/d=([^&]+)/);
   if(m){ try{ src = JSON.parse(decodeURIComponent(escape(atob(m[1])))); }catch(e){} }
   if(!src){ try{ src = JSON.parse(localStorage.getItem(LS)||'null'); }catch(e){} }
-  if(src){ state.items = Array.isArray(src.items)?src.items:[]; if(src.H) state.H=src.H; if(src.opts) Object.assign(state.opts, src.opts); }
+  if(src){ state.items = Array.isArray(src.items)?src.items:[]; if(src.H) state.H=src.H; if(src.opts) Object.assign(state.opts, src.opts); state.layout=src.layout||null; }
   state.items.forEach(it=>{ if(!it.id) it.id=newId(); it.z=it.z||0; it.rot=it.rot||0; it.shape=it.shape||'box'; });
   ROOM.H = state.H;
 }
 function save(){
-  try{ localStorage.setItem(LS, JSON.stringify({items:state.items, H:state.H, opts:state.opts})); }catch(e){}
+  try{ localStorage.setItem(LS, JSON.stringify({items:state.items, H:state.H, opts:state.opts, layout:state.layout})); }catch(e){}
 }
 function encodeShare(){ return btoa(unescape(encodeURIComponent(JSON.stringify({items:state.items, H:state.H})))); }
 
@@ -421,7 +422,7 @@ plan.addEventListener('pointermove',ev=>{
   it.x=snap(clamp(p.x+drag.ox,0,ROOM.W)); it.y=snap(clamp(p.y+drag.oy,0,ROOM.D)); drag.moved=true;
   renderFurnOnly(); fillEditor(); update3DItem(it);
 });
-plan.addEventListener('pointerup',ev=>{ if(drag){ if(drag.moved) save(); drag=null; } });
+plan.addEventListener('pointerup',ev=>{ if(drag){ if(drag.moved){ touched(); save(); } drag=null; } });
 plan.addEventListener('pointercancel',()=>{ drag=null; });
 
 /* ───────────── 3D (three.js) ───────────── */
@@ -722,10 +723,10 @@ $('#btnImport').addEventListener('click',()=>{
     if(/#d=/.test(v)) v=decodeURIComponent(escape(atob(v.split('#d=')[1])));
     const o=JSON.parse(v); if(!Array.isArray(o.items)) throw 0;
     state.items=o.items.map(it=>Object.assign({id:newId(),z:0,rot:0,shape:'box'},it)); if(o.H){ state.H=o.H; $('#inH').value=o.H; applyH(); }
-    state.sel=null; save(); refresh(true); say('불러왔습니다');
+    state.layout=null; state.sel=null; save(); refresh(true); say('불러왔습니다');
   }catch(e){ say('형식을 읽을 수 없습니다'); }
 });
-$('#btnClear').addEventListener('click',()=>{ if(!state.items.length) return; if(!confirm('배치한 가구를 모두 지울까요?')) return; state.items=[]; state.sel=null; save(); refresh(true); });
+$('#btnClear').addEventListener('click',()=>{ if(!state.items.length) return; if(!confirm('배치한 가구를 모두 지울까요?')) return; state.items=[]; state.sel=null; state.layout=null; save(); refresh(true); });
 $('#inH').addEventListener('change',()=>{ state.H=clamp(+$('#inH').value||270,220,400); $('#inH').value=state.H; applyH(); save(); });
 function applyH(){ ROOM.H=state.H; if(T3) buildRoom(); }
 
@@ -736,7 +737,7 @@ PRESETS.forEach(p=>{ const b=document.createElement('button'); b.className='chip
 function addItem(p){
   const n=state.items.length;
   const it={id:newId(), name:p.name, w:p.w, d:p.d, h:p.h, x:snap(ROOM.W/2+((n%5)-2)*30), y:snap(ROOM.D/2-Math.floor(n/5)%5*30), rot:0, color:p.color, shape:p.shape||'box', z:p.z||0, cols:p.cols, rows:p.rows};
-  state.items.push(it); state.sel=it.id; save(); refresh(true);
+  state.items.push(it); state.sel=it.id; touched(); save(); refresh(true);
   if(state.view!=='plan') say(`${it.name} 추가됨 · 평면도에서 위치를 옮기세요`);
 }
 function addHexGroup(){
@@ -777,11 +778,16 @@ const LAYOUTS = {
     return L;
   })(),
 };
-function loadLayout(name){
+function loadLayout(name, silent){
   const L=LAYOUTS[name]; if(!L) return;
-  if(state.items.length && !confirm(`현재 배치를 지우고 "${name}" 배치안을 불러올까요?`)) return;
-  state.items=L.map(o=>Object.assign({},o,{id:newId()})); state.sel=null; save(); refresh(true); say(`${name} 배치안을 불러왔습니다`);
+  if(!silent && state.items.length && !confirm(`현재 배치를 지우고 "${name}" 배치안을 불러올까요?`)) return;
+  state.items=L.map(o=>Object.assign({},o,{id:newId()})); state.sel=null; state.layout={name, ver:LAYOUT_VER, dirty:false};
+  save(); refresh(true); say(silent? `${name} 배치안이 새 버전으로 갱신됐습니다` : `${name} 배치안을 불러왔습니다`);
 }
+// 저장본이 예전 버전 배치안이면: 손대지 않은 경우 자동 갱신, 손댔으면 안내만
+function checkLayoutVersion(){ const l=state.layout; if(!l || !LAYOUTS[l.name] || l.ver>=LAYOUT_VER) return;
+  if(!l.dirty) setTimeout(()=>loadLayout(l.name,true),300);
+  else setTimeout(()=>say(`"${l.name}" 배치안에 새 버전이 있습니다. 버튼을 누르면 갱신됩니다`),600); }
 document.querySelectorAll('[data-layout]').forEach(b=>b.addEventListener('click',()=>loadLayout(b.dataset.layout)));
 function renderList(){
   $('#count').textContent = state.items.length? `${state.items.length}개` : '';
@@ -800,12 +806,12 @@ F.forEach(el=>el.addEventListener('input',()=>{
   if(f==='name'||f==='shape'||f==='color') it[f]=el.value; else { const v=+el.value; if(isNaN(v)) return; it[f]=v; }
   if(f==='w'||f==='d') it[f]=Math.max(5,it[f]); if(f==='h') it.h=Math.max(1,it.h); if(f==='z') it.z=Math.max(0,it.z);
   it.x=clamp(it.x,0,ROOM.W); it.y=clamp(it.y,0,ROOM.D);
-  save(); renderFurnOnly(); renderList();
+  touched(); save(); renderFurnOnly(); renderList();
   if(f==='w'||f==='d'||f==='h'||f==='shape'||f==='color'||f==='name') rebuildFurniture(); else update3DItem(it);
 }));
-$('#btnRot').addEventListener('click',()=>{ const it=sel(); if(!it) return; it.rot=(it.rot+90)%360; save(); refresh(); });
-$('#btnDup').addEventListener('click',()=>{ const it=sel(); if(!it) return; const c=Object.assign({},it,{id:newId(), x:clamp(it.x+it.w+10,0,ROOM.W)}); state.items.push(c); state.sel=c.id; save(); refresh(true); });
-$('#btnDel').addEventListener('click',()=>{ const it=sel(); if(!it) return; state.items=state.items.filter(i=>i!==it); state.sel=null; save(); refresh(true); });
+$('#btnRot').addEventListener('click',()=>{ const it=sel(); if(!it) return; it.rot=(it.rot+90)%360; touched(); save(); refresh(); });
+$('#btnDup').addEventListener('click',()=>{ const it=sel(); if(!it) return; const c=Object.assign({},it,{id:newId(), x:clamp(it.x+it.w+10,0,ROOM.W)}); state.items.push(c); state.sel=c.id; touched(); save(); refresh(true); });
+$('#btnDel').addEventListener('click',()=>{ const it=sel(); if(!it) return; state.items=state.items.filter(i=>i!==it); state.sel=null; touched(); save(); refresh(true); });
 document.addEventListener('keydown',ev=>{
   if(/INPUT|TEXTAREA|SELECT/.test(document.activeElement.tagName)) return;
   const it=sel(); if(!it) return; const st=ev.shiftKey?10:(state.opts.snap?5:1);
@@ -814,9 +820,10 @@ document.addEventListener('keydown',ev=>{
   else if(k==='r'||k==='R') it.rot=(it.rot+90)%360;
   else if(k==='Delete'||k==='Backspace'){ state.items=state.items.filter(i=>i!==it); state.sel=null; save(); refresh(true); ev.preventDefault(); return; }
   else return;
-  it.x=clamp(it.x,0,ROOM.W); it.y=clamp(it.y,0,ROOM.D); ev.preventDefault(); save(); renderFurnOnly(); fillEditor(); update3DItem(it);
+  it.x=clamp(it.x,0,ROOM.W); it.y=clamp(it.y,0,ROOM.D); ev.preventDefault(); touched(); save(); renderFurnOnly(); fillEditor(); update3DItem(it);
 });
 
+function touched(){ if(state.layout) state.layout.dirty=true; }
 function refresh(rebuild){
   renderFurnOnly(); renderList(); fillEditor();
   if(rebuild) rebuildFurniture(); else state.items.forEach(update3DItem);
@@ -825,7 +832,7 @@ function refresh(rebuild){
 /* ───────────── 시작 ───────────── */
 load(); $('#inH').value=state.H;
 document.querySelectorAll('[data-o]').forEach(cb=>cb.checked=!!state.opts[cb.dataset.o]);
-renderPlan(true); renderList(); fillEditor();
+renderPlan(true); renderList(); fillEditor(); checkLayoutVersion();
 let v0='plan'; try{ v0=localStorage.getItem(LS+'-view')||'plan'; }catch(e){}
 if(location.hash.includes('d=')) v0='3d';
 // three.js 로딩 대기 (CDN 대체 로딩 포함)
