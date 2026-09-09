@@ -160,7 +160,7 @@ details td:first-child{font-family:var(--mono);color:var(--ink-2);white-space:no
           <label>X(가운데)<input type="number" data-f="x" step="1"></label>
           <label>Y(가운데)<input type="number" data-f="y" step="1"></label>
           <label>회전°<input type="number" data-f="rot" step="15"></label>
-          <label>모양<select data-f="shape"><option value="box">직사각</option><option value="circle">원형</option><option value="trap">사다리꼴</option><option value="screen">스탠드 화면</option><option value="cubby">칸막이 책장</option></select></label>
+          <label>모양<select data-f="shape"><option value="box">직사각</option><option value="circle">원형</option><option value="trap">사다리꼴</option><option value="screen">스탠드 화면</option><option value="cubby">칸막이 책장</option><option value="field">경기장</option></select></label>
           <label>색<input type="color" data-f="color"></label>
           <label>바닥에서<input type="number" data-f="z" min="0" step="5" title="바닥에서 띄우는 높이(cm). TV 등 벽걸이용"></label>
         </div>
@@ -185,6 +185,9 @@ details td:first-child{font-family:var(--mono);color:var(--ink-2);white-space:no
       <section>
         <h2>저장 · 공유</h2>
         <p class="note" style="margin:0 0 8px">배치는 이 브라우저에 자동 저장됩니다. 다른 사람과 보려면 <b>공유 링크 복사</b>로 링크를 보내세요. 링크 안에 배치가 들어 있습니다.</p>
+        <div class="actions" style="margin:0 0 8px">
+          <button class="btn primary" data-layout="놀이체험존">배치안: 놀이체험존</button>
+        </div>
         <div class="actions" style="margin:0 0 8px">
           <button class="btn" id="btnExport">JSON 복사</button>
           <button class="btn" id="btnImport">아래 JSON 불러오기</button>
@@ -241,7 +244,10 @@ const PRESETS = [
   {name:'화이트보드', w:240, d:6, h:120, color:'#f3f5f4', z:90},
   {name:'원탁', w:120, d:120, h:70, color:'#d9c39a', shape:'circle'},
   {name:'매트', w:200, d:100, h:5, color:'#8fb98f'},
+  {name:'알티노 경기장 3×2m', w:300, d:200, h:75, color:'#26335f', shape:'field'},
   {name:'알티노', w:19, d:11, h:8, color:'#3a3f47'},
+  {name:'55인치 터치스크린(스탠드)', w:130, d:60, h:170, color:'#2b2f33', shape:'screen'},
+  {name:'알티노 보관함', w:90, d:45, h:120, color:'#8a97a8'},
   {name:'직접 입력', w:100, d:50, h:75, color:'#c0b0d0'},
 ];
 
@@ -272,6 +278,9 @@ function say(msg){ toast.textContent=msg; toast.classList.add('on'); clearTimeou
 const clamp=(v,a,b)=>Math.max(a,Math.min(b,v));
 function snap(v){ return state.opts.snap? Math.round(v/5)*5 : Math.round(v); }
 function sel(){ return state.items.find(i=>i.id===state.sel)||null; }
+// 경기장 코스(흰 벽) 폴리라인: 로컬 cm, y+ = 창문쪽. 바깥 벽, 창문쪽 가운데 ㄷ자 홈, 복도쪽에서 올라오는 기둥 벽 2개
+function fieldCourse(w,d){ const m=10, X=w/2-m, Y=d/2-m, nw=Math.min(40,w*0.14);
+  return [ [[-X,-Y],[X,-Y],[X,Y],[-X,Y],[-X,-Y]], [[-nw,Y],[-nw,-d*0.08],[nw,-d*0.08],[nw,Y]], [[-w/4,-Y],[-w/4,d*0.1]], [[w/4,-Y],[w/4,d*0.1]] ]; }
 function trapTop(it){ return Math.max(10, it.w - 2*it.d/Math.tan(Math.PI/3)); } // 60° 사다리꼴 윗변(안쪽)
 
 /* ───────────── 평면도 (SVG) ───────────── */
@@ -366,7 +375,19 @@ function planFurniture(){
     let shape, front='';
     if(it.shape==='circle') shape=`<ellipse cx="0" cy="0" rx="${it.w/2}" ry="${it.d/2}" fill="${fillc}" stroke="${stroke}" stroke-width="${sw}"/>`;
     else if(it.shape==='trap'){ const w2=trapTop(it); shape=`<polygon points="${-it.w/2},${it.d/2} ${it.w/2},${it.d/2} ${w2/2},${-it.d/2} ${-w2/2},${-it.d/2}" fill="${fillc}" stroke="${stroke}" stroke-width="${sw}"/>`; }
-    else if(it.shape==='screen'){ shape=`<rect x="${-it.w*0.3}" y="${-it.d/2}" width="${it.w*0.6}" height="${it.d}" fill="rgba(128,128,128,.25)" stroke="${stroke}" stroke-width="${sw}" stroke-dasharray="4 3"/><rect x="${-it.w/2}" y="-4" width="${it.w}" height="8" fill="${fillc}" stroke="${stroke}" stroke-width="${sw}"/>`; }
+    else if(it.shape==='screen'){ shape=`<rect x="${-it.w*0.3}" y="${-it.d/2}" width="${it.w*0.6}" height="${it.d}" fill="rgba(128,128,128,.25)" stroke="${stroke}" stroke-width="${sw}" stroke-dasharray="4 3"/><rect x="${-it.w/2}" y="-4" width="${it.w}" height="8" fill="${fillc}" stroke="${stroke}" stroke-width="${sw}"/><line x1="${-it.w/2}" y1="7" x2="${it.w/2}" y2="7" stroke="#7fd0ea" stroke-width="2"/>`; }
+    else if(it.shape==='field'){ const c=fieldCourse(it.w,it.d); shape=`<rect x="${-it.w/2}" y="${-it.d/2}" width="${it.w}" height="${it.d}" fill="${fillc}" stroke="${stroke}" stroke-width="${sw}"/><rect x="${-it.w/2+10}" y="${-it.d/2+10}" width="${it.w-20}" height="${it.d-20}" fill="#8d919b"/>${c.map(pl=>`<polyline points="${pl.map(q=>q.join(',')).join(' ')}" fill="none" stroke="#fff" stroke-width="5" stroke-linejoin="round"/>`).join('')}`; }
+    else if(it.shape==='field'){
+      geo=new THREE.BoxGeometry(it.w,it.h,it.d); m=new THREE.Mesh(geo,M_item);
+      const c=document.createElement('canvas'); c.width=Math.round(it.w*3); c.height=Math.round(it.d*3); const g2=c.getContext('2d'); const k=3;
+      g2.fillStyle=it.color; g2.fillRect(0,0,c.width,c.height); g2.fillStyle='#8d919b'; g2.fillRect(10*k,10*k,c.width-20*k,c.height-20*k);
+      g2.strokeStyle='#ffffff'; g2.lineWidth=6*k; g2.lineJoin='round';
+      fieldCourse(it.w,it.d).forEach(pl=>{ g2.beginPath(); pl.forEach((q,i)=>{ const x=(q[0]+it.w/2)*k, y=(q[1]+it.d/2)*k; i?g2.lineTo(x,y):g2.moveTo(x,y); }); g2.stroke(); });
+      const tex=new THREE.CanvasTexture(c); tex.anisotropy=4;
+      const top=new THREE.Mesh(new THREE.PlaneGeometry(it.w,it.d), new THREE.MeshLambertMaterial({map:tex})); top.rotation.x=-Math.PI/2; top.position.y=it.h/2+0.3; top.userData.id=it.id; g.add(top);
+      const whM=new THREE.MeshLambertMaterial({color:0x333333});
+      [[-it.w/2+15,-it.d/2+15],[it.w/2-15,-it.d/2+15],[-it.w/2+15,it.d/2-15],[it.w/2-15,it.d/2-15]].forEach(([x,y])=>{ const wh=new THREE.Mesh(new THREE.CylinderGeometry(5,5,4,12),whM); wh.rotation.z=Math.PI/2; wh.position.set(x,-it.h/2-3,-y); wh.userData.id=it.id; g.add(wh); });
+    }
     else if(it.shape==='cubby'){ const cols=it.cols||4; let div=''; for(let c=1;c<cols;c++){ const x=-it.w/2+it.w*c/cols; div+=`<line x1="${x}" y1="${-it.d/2}" x2="${x}" y2="${it.d/2}" stroke="rgba(0,0,0,.35)" stroke-width="1"/>`; }
       shape=`<rect x="${-it.w/2}" y="${-it.d/2}" width="${it.w}" height="${it.d}" fill="${fillc}" stroke="${stroke}" stroke-width="${sw}"/>${div}`; }
     else { shape=`<rect x="${-it.w/2}" y="${-it.d/2}" width="${it.w}" height="${it.d}" fill="${fillc}" stroke="${stroke}" stroke-width="${sw}" rx="1"/>`;
@@ -480,6 +501,7 @@ function buildRoom(){
     [a,(a+b)/2,b].forEach(x=>room.add(box(x-2,x+2,-7,-2,s.south.sill,s.south.top,M_woodD,'south')));
     [a+(b-a)/4,a+3*(b-a)/4].forEach(x=>room.add(box(x-1,x+1,-6,-3,s.south.sill,s.south.top,M_woodD,'south')));
     room.add(box(a,b,-4,4,s.south.sill-3,s.south.sill,M_wood,'south')); // 창턱
+    room.add(box(a+2,b-2,-2,6,s.south.top,s.south.top+9,M_grey,'south')); // 암막 블라인드(말아 올린 상태)
   });
   room.add(box(s.south.column[0],s.south.column[1],-t,s.south.colDepth,0,H,M_col,'south'));
   s.south.outlets.forEach(x=>room.add(box(x-4,x+4,-1,0.5,28,36,M_white)));
@@ -588,14 +610,14 @@ function rebuildFurniture(){
       const stM=new THREE.MeshLambertMaterial({color:0xd9d7d0});
       const base=new THREE.Mesh(new THREE.BoxGeometry(it.w*0.6,6,it.d),stM); base.position.y=-it.h/2+3; base.userData.id=it.id; g.add(base);
       const pole=new THREE.Mesh(new THREE.BoxGeometry(24,sh0,10),stM); pole.position.y=-it.h/2+sh0/2; pole.userData.id=it.id; g.add(pole);
-      const scr=new THREE.Mesh(new THREE.PlaneGeometry(it.w-8,Math.max(12,it.h-sh0-8)),new THREE.MeshLambertMaterial({color:0x9fd0e8,emissive:0x2a5a70})); scr.position.set(0,m.position.y,-4.2); scr.userData.id=it.id; g.add(scr);
+      const scr=new THREE.Mesh(new THREE.PlaneGeometry(it.w-8,Math.max(12,it.h-sh0-8)),new THREE.MeshLambertMaterial({color:0x9fd0e8,emissive:0x2a5a70})); scr.position.set(0,m.position.y,4.2); scr.userData.id=it.id; g.add(scr);
     }
     else if(it.shape==='cubby'){
       const cols=it.cols||4, rows=it.rows||2, p=2, leg=8, w=it.w, d=it.d, h=it.h, y0=-h/2+leg;
       const inM=new THREE.MeshLambertMaterial({color:new THREE.Color(it.color).multiplyScalar(0.82)});
       const add=(gw,gh,gd,x,y,z,mm)=>{ const b=new THREE.Mesh(new THREE.BoxGeometry(gw,gh,gd),mm||M_item); b.position.set(x,y,z); b.userData.id=it.id; g.add(b); return b; };
       geo=new THREE.BoxGeometry(w,h-leg,d); m=new THREE.Mesh(geo,M_item); m.visible=false; m.position.y=leg/2; // 선택용 투명 박스
-      add(w,h-leg,p,0,y0+(h-leg)/2,d/2-p/2,inM);                 // 뒤판
+      add(w,h-leg,p,0,y0+(h-leg)/2,-d/2+p/2,inM);                // 뒤판(세계 +y쪽), 앞은 -y로 트임
       add(p,h-leg,d,-w/2+p/2,y0+(h-leg)/2,0); add(p,h-leg,d,w/2-p/2,y0+(h-leg)/2,0); // 옆판
       for(let r=0;r<=rows;r++){ add(w,p,d,0,y0+p/2+(h-leg-p)*r/rows,0); }          // 선반(바닥·중간·상판)
       for(let c=1;c<cols;c++){ add(p,h-leg,d,-w/2+w*c/cols,y0+(h-leg)/2,0); }        // 세로 칸막이
@@ -734,6 +756,37 @@ function addHexGroup(){
   state.sel=first.id; save(); refresh(true); say('육각 모둠(책상 6 + 의자 6)을 추가했습니다');
 }
 $('#btnHex').addEventListener('click',addHexGroup);
+
+/* ───────────── 배치안 (스케치 기준) ───────────── */
+const LAYOUTS = {
+  '놀이체험존': (()=>{
+    const L=[]; const add=(o)=>L.push(Object.assign({rot:0,z:0,shape:'box'},o));
+    // 알티노 주행체험 경기장 2개 (3×2 m, 바퀴 이동식) — 창문 쪽
+    [[665,'①'],[250,'②']].forEach(([cx,n])=>{
+      add({name:`알티노 주행체험 ${n}`, w:300, d:200, h:75, x:cx, y:165, color:'#26335f', shape:'field'});
+      add({name:'알티노', w:19, d:11, h:8, x:cx-60, y:150, z:75, color:'#3a3f47', rot:20});
+      [-95,0,95].forEach(dx=>add({name:'의자', w:55, d:55, h:80, x:cx+dx, y:310, color:'#f0f0ee'}));
+    });
+    // 책상 4 (사다리꼴, 긴 변이 복도 쪽) + 의자 2씩
+    [[560,400],[370,400],[560,545],[370,545]].forEach(([x,y])=>{
+      add({name:'사다리꼴 책상', w:120, d:52, h:72, x, y, rot:180, color:'#9ec7e6', shape:'trap'});
+      [-32,32].forEach(dx=>add({name:'의자', w:55, d:55, h:80, x:x+dx, y:y+60, color:'#f0f0ee'}));
+    });
+    // 55인치 스탠드형 터치스크린 2대 — 앞 벽(동)에 붙여 교실 안쪽을 봄
+    [350,560].forEach(y=>add({name:'55인치 터치스크린', w:130, d:60, h:170, x:832, y, rot:270, color:'#2b2f33', shape:'screen'}));
+    // 알티노 보관함 — 창문 벽과 뒤 벽이 만나는 모서리
+    add({name:'알티노 보관함', w:90, d:45, h:120, x:50, y:23, rot:180, color:'#8a97a8'});
+    // 도서용 책장 — 뒤 벽(서)에 붙여 교실 안쪽을 봄
+    add({name:'도서용 책장', w:160, d:30, h:90, x:16, y:510, rot:90, color:'#d9bf94', shape:'cubby', cols:4, rows:2});
+    return L;
+  })(),
+};
+function loadLayout(name){
+  const L=LAYOUTS[name]; if(!L) return;
+  if(state.items.length && !confirm(`현재 배치를 지우고 "${name}" 배치안을 불러올까요?`)) return;
+  state.items=L.map(o=>Object.assign({},o,{id:newId()})); state.sel=null; save(); refresh(true); say(`${name} 배치안을 불러왔습니다`);
+}
+document.querySelectorAll('[data-layout]').forEach(b=>b.addEventListener('click',()=>loadLayout(b.dataset.layout)));
 function renderList(){
   $('#count').textContent = state.items.length? `${state.items.length}개` : '';
   if(!state.items.length){ listEl.innerHTML='<div class="empty">아직 가구가 없습니다. 위에서 추가하세요.</div>'; return; }
