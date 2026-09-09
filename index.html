@@ -178,6 +178,8 @@ details td:first-child{font-family:var(--mono);color:var(--ink-2);white-space:no
           <label><input type="checkbox" data-o="snap" checked> 5 cm 단위로 맞추기</label>
           <label><input type="checkbox" data-o="ceiling" checked> 천장 조명·에어컨 표시</label>
           <label><input type="checkbox" data-o="labels" checked> 가구 이름표</label>
+          <label><input type="checkbox" data-o="blinds" checked> 창문 블라인드(흰색)</label>
+          <label><input type="checkbox" data-o="mat"> 바닥 전면 매트</label>
         </div>
       </section>
 
@@ -186,6 +188,7 @@ details td:first-child{font-family:var(--mono);color:var(--ink-2);white-space:no
         <p class="note" style="margin:0 0 8px">배치는 이 브라우저에 자동 저장됩니다. 다른 사람과 보려면 <b>공유 링크 복사</b>로 링크를 보내세요. 링크 안에 배치가 들어 있습니다.</p>
         <div class="actions" style="margin:0 0 8px">
           <button class="btn primary" data-layout="놀이체험존">배치안: 놀이체험존</button>
+          <button class="btn primary" data-layout="유아체험존">배치안: 유아체험존</button>
         </div>
         <div class="actions" style="margin:0 0 8px">
           <button class="btn" id="btnExport">JSON 복사</button>
@@ -247,12 +250,14 @@ const PRESETS = [
   {name:'알티노', w:19, d:11, h:8, color:'#3a3f47'},
   {name:'55인치 터치스크린(스탠드)', w:130, d:60, h:170, color:'#2b2f33', shape:'screen'},
   {name:'알티노 보관함', w:90, d:45, h:120, color:'#8a97a8'},
+  {name:'유아 책상(원형)', w:90, d:90, h:50, color:'#f2d4a0', shape:'circle'},
+  {name:'유아 의자', w:32, d:32, h:55, color:'#f4a261'},
   {name:'직접 입력', w:100, d:50, h:75, color:'#c0b0d0'},
 ];
 
 /* ───────────── 상태 ───────────── */
-const state = { items:[], sel:null, view:'plan', opts:{grid:true,snap:true,ceiling:true,labels:true}, H:270, layout:null };
-const LAYOUT_VER = 3; // 배치안을 고칠 때마다 올림 → 예전 저장본을 자동 갱신
+const state = { items:[], zones:[], sel:null, view:'plan', opts:{grid:true,snap:true,ceiling:true,labels:true,blinds:true,mat:false}, H:270, layout:null };
+const LAYOUT_VERS = { '놀이체험존':3, '유아체험존':1 }; // 배치안을 고칠 때마다 올림 → 예전 저장본을 자동 갱신
 const LS='gimhae-newclass-v1';
 let uid = 1;
 function newId(){ return 'f'+(uid++)+'-'+Math.random().toString(36).slice(2,6); }
@@ -262,14 +267,14 @@ function load(){
   const m = location.hash.match(/d=([^&]+)/);
   if(m){ try{ src = JSON.parse(decodeURIComponent(escape(atob(m[1])))); }catch(e){} }
   if(!src){ try{ src = JSON.parse(localStorage.getItem(LS)||'null'); }catch(e){} }
-  if(src){ state.items = Array.isArray(src.items)?src.items:[]; if(src.H) state.H=src.H; if(src.opts) Object.assign(state.opts, src.opts); state.layout=src.layout||null; }
+  if(src){ state.items = Array.isArray(src.items)?src.items:[]; if(src.H) state.H=src.H; if(src.opts) Object.assign(state.opts, src.opts); state.layout=src.layout||null; state.zones=Array.isArray(src.zones)?src.zones:[]; }
   state.items.forEach(it=>{ if(!it.id) it.id=newId(); it.z=it.z||0; it.rot=it.rot||0; it.shape=it.shape||'box'; });
   ROOM.H = state.H;
 }
 function save(){
-  try{ localStorage.setItem(LS, JSON.stringify({items:state.items, H:state.H, opts:state.opts, layout:state.layout})); }catch(e){}
+  try{ localStorage.setItem(LS, JSON.stringify({items:state.items, zones:state.zones, H:state.H, opts:state.opts, layout:state.layout})); }catch(e){}
 }
-function encodeShare(){ return btoa(unescape(encodeURIComponent(JSON.stringify({items:state.items, H:state.H})))); }
+function encodeShare(){ return btoa(unescape(encodeURIComponent(JSON.stringify({items:state.items, zones:state.zones, H:state.H, mat:!!state.opts.mat})))); }
 
 /* ───────────── DOM ───────────── */
 const $ = s=>document.querySelector(s);
@@ -294,7 +299,8 @@ function planStatic(){
   const W=ROOM.W, D=ROOM.D, s=SPEC, o=[];
   const ink='var(--ink)', ink2='var(--ink-2)';
   // 바닥
-  o.push(R(0,W,0,D,`fill="var(--floor)"`));
+  o.push(R(0,W,0,D,state.opts.mat?`fill="#cfe0c3"`:`fill="var(--floor)"`));
+  if(state.opts.mat){ for(let x=60;x<W;x+=60) o.push(L(x,0,x,D,`stroke="rgba(0,0,0,.06)" stroke-width="1"`)); for(let y=60;y<D;y+=60) o.push(L(0,y,W,y,`stroke="rgba(0,0,0,.06)" stroke-width="1"`)); }
   // 격자
   if(state.opts.grid){
     for(let x=100;x<W;x+=100) o.push(L(x,0,x,D,`stroke="rgba(0,0,0,.09)" stroke-width="1"`));
@@ -307,6 +313,8 @@ function planStatic(){
     const a=s.ceiling.ac; o.push(R(a.x-a.s/2,a.x+a.s/2,a.y-a.s/2,a.y+a.s/2,`fill="none" stroke="${ink2}" stroke-width="1.2" stroke-dasharray="4 3" opacity=".6"`));
     o.push(T(a.x,a.y-a.s/2-8,'에어컨',`font-size="11" text-anchor="middle" fill="${ink2}" opacity=".8"`));
   }
+  // 구역(배치안)
+  (state.zones||[]).forEach(z=>{ o.push(R(z.x1,z.x2,z.y1,z.y2,`fill="${z.color||'rgba(47,93,138,.06)'}" stroke="var(--accent)" stroke-width="1.5" stroke-dasharray="8 5"`)); o.push(T(z.x1+10,z.y2-16,z.name,`font-size="13" fill="var(--accent)" font-weight="600"`)); });
   // 바닥 콘센트
   s.floorBoxes.forEach(([x,y])=>{ o.push(R(x-7,x+7,y-7,y+7,`fill="var(--panel)" stroke="${ink2}" stroke-width="1.5"`)); o.push(T(x,y-16,'바닥콘센트',`font-size="9" text-anchor="middle" fill="${ink2}"`)); });
   // 벽 (두께 12, 바깥쪽)
@@ -441,7 +449,7 @@ function init3D(){
   const sun2=new THREE.DirectionalLight(0xffffff,0.2); sun2.position.set(-500,600,-400); scene.add(sun2);
   const camP=new THREE.PerspectiveCamera(50,1,5,20000);
   cam.target=new THREE.Vector3(ROOM.W/2,40,-ROOM.D/2);
-  T3={renderer,scene,camP,room:null,furn:new THREE.Group(),walls:{south:[],north:[],west:[],east:[]},ceil:[],meshes:new Map(),ray:new THREE.Raycaster()};
+  T3={renderer,scene,camP,room:null,blinds:[],mat:null,furn:new THREE.Group(),walls:{south:[],north:[],west:[],east:[]},ceil:[],meshes:new Map(),ray:new THREE.Raycaster()};
   scene.add(T3.furn);
   buildRoom(); rebuildFurniture();
   setupControls();
@@ -466,6 +474,13 @@ function floorTexture(){
   for(let row=0; row*pw<c.height; row++){ let x=-rnd()*120*s; while(x<c.width){ const len=(90+rnd()*70)*s; g.fillStyle=`hsl(36 ${34+rnd()*10}% ${62+rnd()*9}%)`; g.fillRect(x+1,row*pw+1,len-2,pw-2); x+=len; } }
   const t=new THREE.CanvasTexture(c); t.anisotropy=4; return t;
 }
+function blindTexture(wCm,hCm){ // 흰색 가로 슬랫
+  const c=document.createElement('canvas'); c.width=64; c.height=64; const g=c.getContext('2d');
+  g.fillStyle='#f7f7f4'; g.fillRect(0,0,64,64); g.fillStyle='#dedcd6'; for(let y=0;y<64;y+=8) g.fillRect(0,y,64,2);
+  const t=new THREE.CanvasTexture(c); t.wrapS=t.wrapT=THREE.RepeatWrapping; t.repeat.set(1,hCm/20); return t; }
+function matTexture(){ const c=document.createElement('canvas'); c.width=256; c.height=256; const g=c.getContext('2d');
+  g.fillStyle='#cfe0c3'; g.fillRect(0,0,256,256); g.strokeStyle='rgba(0,0,0,.08)'; g.lineWidth=2; g.strokeRect(1,1,254,254);
+  const t=new THREE.CanvasTexture(c); t.wrapS=t.wrapT=THREE.RepeatWrapping; t.repeat.set(ROOM.W/60,ROOM.D/60); return t; }
 function boardTexture(lenCm,hCm){
   const c=document.createElement('canvas'); c.width=64; c.height=64; const g=c.getContext('2d');
   g.fillStyle='#dccfae'; g.fillRect(0,0,64,64); g.fillStyle='#b9a983';
@@ -475,7 +490,7 @@ function boardTexture(lenCm,hCm){
 function buildRoom(){
   const THREE=window.THREE, s=SPEC, W=ROOM.W, D=ROOM.D, H=ROOM.H, t=12;
   if(T3.room){ T3.scene.remove(T3.room); }
-  T3.walls={south:[],north:[],west:[],east:[]}; T3.ceil=[];
+  T3.walls={south:[],north:[],west:[],east:[]}; T3.ceil=[]; T3.blinds=[];
   const room=new THREE.Group(); T3.room=room; T3.scene.add(room);
   const M_wall=mat(0xece7dc), M_wood=mat(0xc8a26a), M_woodD=mat(0x6b4a2b), M_door=mat(0xb8905a), M_col=mat(0xc9a66e),
         M_glass=mat(0xa9cfe0,{transparent:true,opacity:0.35}), M_frost=mat(0xe6eef2,{transparent:true,opacity:0.65}),
@@ -483,6 +498,7 @@ function buildRoom(){
   // 바닥
   const fl=new THREE.Mesh(new THREE.PlaneGeometry(W,D), new THREE.MeshLambertMaterial({map:floorTexture()}));
   fl.rotation.x=-Math.PI/2; fl.position.set(W/2,0,-D/2); room.add(fl);
+  const matM=new THREE.Mesh(new THREE.PlaneGeometry(W-1,D-1), new THREE.MeshLambertMaterial({map:matTexture()})); matM.rotation.x=-Math.PI/2; matM.position.set(W/2,0.6,-D/2); room.add(matM); T3.mat=matM;
   // 걸레받이
   room.add(box(0,W,0,2,0,7,M_woodD)); room.add(box(0,W,D-2,D,0,7,M_woodD)); room.add(box(0,2,0,D,0,7,M_woodD)); room.add(box(W-2,W,0,D,0,7,M_woodD));
 
@@ -500,7 +516,8 @@ function buildRoom(){
     [a,(a+b)/2,b].forEach(x=>room.add(box(x-2,x+2,-7,-2,s.south.sill,s.south.top,M_woodD,'south')));
     [a+(b-a)/4,a+3*(b-a)/4].forEach(x=>room.add(box(x-1,x+1,-6,-3,s.south.sill,s.south.top,M_woodD,'south')));
     room.add(box(a,b,-4,4,s.south.sill-3,s.south.sill,M_wood,'south')); // 창턱
-    room.add(box(a+2,b-2,-2,6,s.south.top,s.south.top+9,M_grey,'south')); // 암막 블라인드(말아 올린 상태)
+    room.add(box(a+2,b-2,-1,6,s.south.top-1,s.south.top+8,M_white,'south')); // 블라인드 헤드박스
+    [[a,(a+b)/2],[(a+b)/2,b]].forEach(([x1,x2])=>{ const bl=box(x1+3,x2-3,-1.5,0.5,s.south.sill+2,s.south.top-1,new THREE.MeshLambertMaterial({map:blindTexture(x2-x1-6,s.south.top-s.south.sill-3),transparent:true,opacity:0.94})); room.add(bl); T3.blinds.push(bl); });
   });
   room.add(box(s.south.column[0],s.south.column[1],-t,s.south.colDepth,0,H,M_col,'south'));
   s.south.outlets.forEach(x=>room.add(box(x-4,x+4,-1,0.5,28,36,M_white)));
@@ -655,6 +672,7 @@ function draw(){
     T3.walls[k].forEach(m=>{ m.material.transparent=true; m.material.opacity = fade? 0.08 : m.userData.op; m.material.depthWrite=!fade; });
   });
   T3.ceil.forEach(m=>{ m.visible = state.opts.ceiling && state.view==='3d' && !above; });
+  (T3.blinds||[]).forEach(m=>{ m.visible=!!state.opts.blinds; }); if(T3.mat) T3.mat.visible=!!state.opts.mat;
   T3.renderer.render(T3.scene,c);
 }
 function setupControls(){
@@ -716,21 +734,23 @@ $('#btnEyeWin').addEventListener('click',()=>eyeView('win'));
 
 function copyText(txt){ if(navigator.clipboard && window.isSecureContext){ return navigator.clipboard.writeText(txt); } const ta=document.createElement('textarea'); ta.value=txt; document.body.appendChild(ta); ta.select(); document.execCommand('copy'); ta.remove(); return Promise.resolve(); }
 $('#btnShare').addEventListener('click',()=>{ const url=location.origin+location.pathname+'#d='+encodeShare(); history.replaceState(null,'',url); copyText(url).then(()=>say('공유 링크를 복사했습니다')).catch(()=>{ $('#json').value=url; say('아래 칸에 링크를 넣었습니다. 직접 복사하세요'); }); });
-$('#btnExport').addEventListener('click',()=>{ const s=JSON.stringify({items:state.items,H:state.H},null,1); $('#json').value=s; copyText(s).then(()=>say('JSON을 복사했습니다')).catch(()=>say('아래 칸에서 복사하세요')); });
+$('#btnExport').addEventListener('click',()=>{ const s=JSON.stringify({items:state.items,zones:state.zones,H:state.H,mat:!!state.opts.mat},null,1); $('#json').value=s; copyText(s).then(()=>say('JSON을 복사했습니다')).catch(()=>say('아래 칸에서 복사하세요')); });
 $('#btnImport').addEventListener('click',()=>{
   let v=$('#json').value.trim(); if(!v) return say('먼저 JSON이나 링크를 붙여넣으세요');
   try{
     if(/#d=/.test(v)) v=decodeURIComponent(escape(atob(v.split('#d=')[1])));
     const o=JSON.parse(v); if(!Array.isArray(o.items)) throw 0;
     state.items=o.items.map(it=>Object.assign({id:newId(),z:0,rot:0,shape:'box'},it)); if(o.H){ state.H=o.H; $('#inH').value=o.H; applyH(); }
-    state.layout=null; state.sel=null; save(); refresh(true); say('불러왔습니다');
+    state.zones=Array.isArray(o.zones)?o.zones:[]; if(typeof o.mat==='boolean'){ state.opts.mat=o.mat; syncOpts(); }
+    state.layout=null; state.sel=null; save(); refresh(true); renderPlan(true); say('불러왔습니다');
   }catch(e){ say('형식을 읽을 수 없습니다'); }
 });
-$('#btnClear').addEventListener('click',()=>{ if(!state.items.length) return; if(!confirm('배치한 가구를 모두 지울까요?')) return; state.items=[]; state.sel=null; state.layout=null; save(); refresh(true); });
+$('#btnClear').addEventListener('click',()=>{ if(!state.items.length) return; if(!confirm('배치한 가구를 모두 지울까요?')) return; state.items=[]; state.zones=[]; state.sel=null; state.layout=null; save(); refresh(true); renderPlan(true); });
 $('#inH').addEventListener('change',()=>{ state.H=clamp(+$('#inH').value||270,220,400); $('#inH').value=state.H; applyH(); save(); });
 function applyH(){ ROOM.H=state.H; if(T3) buildRoom(); }
 
-document.querySelectorAll('[data-o]').forEach(cb=>{ cb.checked=!!state.opts[cb.dataset.o]; cb.addEventListener('change',()=>{ state.opts[cb.dataset.o]=cb.checked; save(); renderPlan(true); rebuildFurniture(); }); });
+function syncOpts(){ document.querySelectorAll('[data-o]').forEach(cb=>cb.checked=!!state.opts[cb.dataset.o]); invalidate(); }
+document.querySelectorAll('[data-o]').forEach(cb=>{ cb.checked=!!state.opts[cb.dataset.o]; cb.addEventListener('change',()=>{ state.opts[cb.dataset.o]=cb.checked; save(); renderPlan(true); rebuildFurniture(); invalidate(); }); });
 
 // 프리셋
 PRESETS.forEach(p=>{ const b=document.createElement('button'); b.className='chip'; b.innerHTML=`<i style="background:${p.color}"></i>${esc(p.name)}`; b.addEventListener('click',()=>addItem(p)); $('#presets').appendChild(b); });
@@ -759,6 +779,7 @@ $('#btnHex').addEventListener('click',addHexGroup);
 const LAYOUTS = {
   '놀이체험존': (()=>{
     const L=[]; const add=(o)=>L.push(Object.assign({rot:0,z:0,shape:'box'},o));
+    L.zones=[ {name:'알티노 주행체험', x1:90,x2:830,y1:0,y2:215}, {name:'책상 · 보드게임', x1:290,x2:640,y1:340,y2:670} ];
     // 알티노 주행체험 경기장 2개 (3×2 m, 바퀴 이동식) — 창문 쪽
     [[665,'①'],[250,'②']].forEach(([cx,n])=>{
       add({name:`알티노 주행체험 ${n}`, w:300, d:200, h:75, x:cx, y:106, color:'#26335f', shape:'field'}); // 창턱(4cm) 바로 앞까지 붙임
@@ -775,17 +796,36 @@ const LAYOUTS = {
     add({name:'알티노 보관함', w:90, d:45, h:120, x:50, y:23, rot:180, color:'#8a97a8'});
     // 도서용 책장 — 뒤 벽(서)에 붙여 교실 안쪽을 봄
     add({name:'도서용 책장', w:160, d:30, h:90, x:16, y:510, rot:90, color:'#d9bf94', shape:'cubby', cols:4, rows:2});
-    return L;
+    return {items:L, zones:L.zones, mat:false};
+  })(),
+  '유아체험존': (()=>{
+    const L=[]; const add=(o)=>L.push(Object.assign({rot:0,z:0,shape:'box'},o));
+    // 입체도형 놀이 — 창문 쪽 앞 벽 근처에 유아용 원형 책상 2
+    [[720,197],[580,197]].forEach(([x,y])=>add({name:'유아 책상(원형)', w:90, d:90, h:50, x, y, color:'#f2d4a0', shape:'circle'}));
+    // 미니 책상 2 — 복도 쪽
+    [[720,549],[580,549]].forEach(([x,y])=>add({name:'미니 책상', w:90, d:90, h:50, x, y, color:'#f2d4a0', shape:'circle'}));
+    // 블록 성벽(부착) — 창문 벽 가운데 기둥에서 교실 안쪽으로 3.3 m
+    add({name:'블록 성벽(부착)', w:30, d:335, h:120, x:482, y:192, color:'#e9b44c'});
+    // 블록 선반 — 창문 벽과 뒤 벽이 만나는 모서리
+    add({name:'블록 선반', w:90, d:40, h:90, x:50, y:22, rot:180, color:'#d9bf94', shape:'cubby', cols:3, rows:2});
+    // 자석 벽면 2장 — 앞 벽(동) 부착, 바닥에서 40 cm
+    add({name:'자석벽면 ② 골드버그 3세트', w:200, d:5, h:120, x:862, y:218, z:40, rot:90, color:'#e4e8ec'});
+    add({name:'자석벽면 ① 테셀레이션', w:220, d:5, h:120, x:862, y:578, z:40, rot:90, color:'#e4e8ec'});
+    // 옷걸이 · 사물함 — 뒤 벽(서) 입구 쪽
+    add({name:'옷걸이(유아용)', w:100, d:30, h:120, x:15, y:505, rot:90, color:'#c9a878'});
+    add({name:'유아 사물함', w:120, d:35, h:90, x:18, y:625, rot:90, color:'#b8c4cf', shape:'cubby', cols:4, rows:2});
+    return {items:L, mat:true, zones:[ {name:'입체도형 놀이', x1:520,x2:840,y1:40,y2:330}, {name:'블록놀이존 (4D Block)', x1:20,x2:440,y1:30,y2:360}, {name:'동화책 (붙박이 책장)', x1:200,x2:670,y1:640,y2:715} ]};
   })(),
 };
 function loadLayout(name, silent){
   const L=LAYOUTS[name]; if(!L) return;
   if(!silent && state.items.length && !confirm(`현재 배치를 지우고 "${name}" 배치안을 불러올까요?`)) return;
-  state.items=L.map(o=>Object.assign({},o,{id:newId()})); state.sel=null; state.layout={name, ver:LAYOUT_VER, dirty:false};
-  save(); refresh(true); say(silent? `${name} 배치안이 새 버전으로 갱신됐습니다` : `${name} 배치안을 불러왔습니다`);
+  state.items=L.items.map(o=>Object.assign({},o,{id:newId()})); state.zones=(L.zones||[]).map(z=>Object.assign({},z)); state.opts.mat=!!L.mat; syncOpts();
+  state.sel=null; state.layout={name, ver:LAYOUT_VERS[name]||1, dirty:false};
+  save(); refresh(true); renderPlan(true); say(silent? `${name} 배치안이 새 버전으로 갱신됐습니다` : `${name} 배치안을 불러왔습니다`);
 }
 // 저장본이 예전 버전 배치안이면: 손대지 않은 경우 자동 갱신, 손댔으면 안내만
-function checkLayoutVersion(){ const l=state.layout; if(!l || !LAYOUTS[l.name] || l.ver>=LAYOUT_VER) return;
+function checkLayoutVersion(){ const l=state.layout; if(!l || !LAYOUTS[l.name] || l.ver>=(LAYOUT_VERS[l.name]||1)) return;
   if(!l.dirty) setTimeout(()=>loadLayout(l.name,true),300);
   else setTimeout(()=>say(`"${l.name}" 배치안에 새 버전이 있습니다. 버튼을 누르면 갱신됩니다`),600); }
 document.querySelectorAll('[data-layout]').forEach(b=>b.addEventListener('click',()=>loadLayout(b.dataset.layout)));
