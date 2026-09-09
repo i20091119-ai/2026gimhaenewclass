@@ -107,7 +107,11 @@ details td:first-child{font-family:var(--mono);color:var(--ink-2);white-space:no
 <div id="app">
   <header>
     <h1>김해 새교실 스튜디오 <small>865 × 715 cm</small></h1>
-    <div class="tabs" role="tablist">
+    <div class="tabs" id="roomTabs" role="tablist" title="교실 선택 (옆 교실, 빈 교실 구조 동일)">
+      <button role="tab" data-room="놀이체험존" aria-pressed="true">놀이체험존 교실</button>
+      <button role="tab" data-room="유아체험존" aria-pressed="false">유아체험존 교실</button>
+    </div>
+    <div class="tabs" id="viewTabs" role="tablist">
       <button role="tab" data-view="plan" aria-pressed="true">평면도</button>
       <button role="tab" data-view="3d" aria-pressed="false">3D</button>
     </div>
@@ -185,10 +189,9 @@ details td:first-child{font-family:var(--mono);color:var(--ink-2);white-space:no
 
       <section>
         <h2>저장 · 공유</h2>
-        <p class="note" style="margin:0 0 8px">배치는 이 브라우저에 자동 저장됩니다. 다른 사람과 보려면 <b>공유 링크 복사</b>로 링크를 보내세요. 링크 안에 배치가 들어 있습니다.</p>
+        <p class="note" style="margin:0 0 8px">교실별로 이 브라우저에 자동 저장됩니다. 다른 사람과 보려면 <b>공유 링크 복사</b>로 링크를 보내세요. 링크 안에 배치가 들어 있습니다.</p>
         <div class="actions" style="margin:0 0 8px">
-          <button class="btn primary" data-layout="놀이체험존">배치안: 놀이체험존</button>
-          <button class="btn primary" data-layout="유아체험존">배치안: 유아체험존</button>
+          <button class="btn primary" id="btnLayout">이 교실의 배치안으로 되돌리기</button>
         </div>
         <div class="actions" style="margin:0 0 8px">
           <button class="btn" id="btnExport">JSON 복사</button>
@@ -250,31 +253,50 @@ const PRESETS = [
   {name:'알티노', w:19, d:11, h:8, color:'#3a3f47'},
   {name:'55인치 터치스크린(스탠드)', w:130, d:60, h:170, color:'#2b2f33', shape:'screen'},
   {name:'알티노 보관함', w:90, d:45, h:120, color:'#8a97a8'},
+  {name:'현수막(벽걸이)', w:100, d:1, h:150, color:'#f7f4ea', z:72},
   {name:'유아 책상(원형)', w:90, d:90, h:50, color:'#f2d4a0', shape:'circle'},
   {name:'유아 의자', w:32, d:32, h:55, color:'#f4a261'},
   {name:'직접 입력', w:100, d:50, h:75, color:'#c0b0d0'},
 ];
 
 /* ───────────── 상태 ───────────── */
-const state = { items:[], zones:[], sel:null, view:'plan', opts:{grid:true,snap:true,ceiling:true,labels:true,blinds:true,mat:false}, H:270, layout:null };
-const LAYOUT_VERS = { '놀이체험존':3, '유아체험존':1 }; // 배치안을 고칠 때마다 올림 → 예전 저장본을 자동 갱신
+const ROOMS=['놀이체험존','유아체험존'];
+const state = { room:'놀이체험존', items:[], zones:[], sel:null, view:'plan', opts:{grid:true,snap:true,ceiling:true,labels:true,blinds:true,mat:false}, H:270, layout:null };
+const LAYOUT_VERS = { '놀이체험존':4, '유아체험존':2 }; // 배치안을 고칠 때마다 올림 → 예전 저장본을 자동 갱신
 const LS='gimhae-newclass-v1';
 let uid = 1;
 function newId(){ return 'f'+(uid++)+'-'+Math.random().toString(36).slice(2,6); }
 
+function roomKey(){ return LS+'-'+state.room; }
 function load(){
-  let src=null;
+  let src=null, fromHash=false;
   const m = location.hash.match(/d=([^&]+)/);
-  if(m){ try{ src = JSON.parse(decodeURIComponent(escape(atob(m[1])))); }catch(e){} }
-  if(!src){ try{ src = JSON.parse(localStorage.getItem(LS)||'null'); }catch(e){} }
-  if(src){ state.items = Array.isArray(src.items)?src.items:[]; if(src.H) state.H=src.H; if(src.opts) Object.assign(state.opts, src.opts); state.layout=src.layout||null; state.zones=Array.isArray(src.zones)?src.zones:[]; }
+  if(m){ try{ src = JSON.parse(decodeURIComponent(escape(atob(m[1])))); fromHash=true; if(src.room && ROOMS.includes(src.room)) state.room=src.room; }catch(e){ src=null; } }
+  if(!fromHash){ try{ const r=localStorage.getItem(LS+'-room'); if(r && ROOMS.includes(r)) state.room=r; }catch(e){} }
+  if(!src){ try{ src = JSON.parse(localStorage.getItem(roomKey())||'null'); }catch(e){} }
+  applyState(src);
+  if(!src && LAYOUTS[state.room]) loadLayout(state.room, true, true); // 처음 여는 교실은 배치안으로 시작
+}
+function applyState(src){
+  state.items=[]; state.zones=[]; state.layout=null; state.sel=null;
+  if(src){ state.items = Array.isArray(src.items)?src.items:[]; if(src.H) state.H=src.H; if(src.opts) Object.assign(state.opts, src.opts); state.layout=src.layout||null; state.zones=Array.isArray(src.zones)?src.zones:[]; if(typeof src.mat==='boolean') state.opts.mat=src.mat; }
   state.items.forEach(it=>{ if(!it.id) it.id=newId(); it.z=it.z||0; it.rot=it.rot||0; it.shape=it.shape||'box'; });
   ROOM.H = state.H;
 }
 function save(){
-  try{ localStorage.setItem(LS, JSON.stringify({items:state.items, zones:state.zones, H:state.H, opts:state.opts, layout:state.layout})); }catch(e){}
+  try{ localStorage.setItem(roomKey(), JSON.stringify({items:state.items, zones:state.zones, H:state.H, opts:state.opts, layout:state.layout})); localStorage.setItem(LS+'-room', state.room); }catch(e){}
 }
-function encodeShare(){ return btoa(unescape(encodeURIComponent(JSON.stringify({items:state.items, zones:state.zones, H:state.H, mat:!!state.opts.mat})))); }
+function switchRoom(name){
+  if(!ROOMS.includes(name) || name===state.room) return;
+  save(); state.room=name;
+  let src=null; try{ src=JSON.parse(localStorage.getItem(roomKey())||'null'); }catch(e){}
+  applyState(src);
+  if(!src && LAYOUTS[name]) loadLayout(name, true, true);
+  document.querySelectorAll('#roomTabs button').forEach(b=>b.setAttribute('aria-pressed', String(b.dataset.room===state.room)));
+  $('#inH').value=state.H; syncOpts(); if(T3) buildRoom(); renderPlan(true); refresh(true); checkLayoutVersion(); save();
+  say(`${name} 교실`);
+}
+function encodeShare(){ return btoa(unescape(encodeURIComponent(JSON.stringify({room:state.room, items:state.items, zones:state.zones, H:state.H, mat:!!state.opts.mat})))); }
 
 /* ───────────── DOM ───────────── */
 const $ = s=>document.querySelector(s);
@@ -299,7 +321,7 @@ function planStatic(){
   const W=ROOM.W, D=ROOM.D, s=SPEC, o=[];
   const ink='var(--ink)', ink2='var(--ink-2)';
   // 바닥
-  o.push(R(0,W,0,D,state.opts.mat?`fill="#cfe0c3"`:`fill="var(--floor)"`));
+  o.push(R(0,W,0,D,state.opts.mat?`fill="#e9dfcb"`:`fill="var(--floor)"`));
   if(state.opts.mat){ for(let x=60;x<W;x+=60) o.push(L(x,0,x,D,`stroke="rgba(0,0,0,.06)" stroke-width="1"`)); for(let y=60;y<D;y+=60) o.push(L(0,y,W,y,`stroke="rgba(0,0,0,.06)" stroke-width="1"`)); }
   // 격자
   if(state.opts.grid){
@@ -479,7 +501,7 @@ function blindTexture(wCm,hCm){ // 흰색 가로 슬랫
   g.fillStyle='#f7f7f4'; g.fillRect(0,0,64,64); g.fillStyle='#dedcd6'; for(let y=0;y<64;y+=8) g.fillRect(0,y,64,2);
   const t=new THREE.CanvasTexture(c); t.wrapS=t.wrapT=THREE.RepeatWrapping; t.repeat.set(1,hCm/20); return t; }
 function matTexture(){ const c=document.createElement('canvas'); c.width=256; c.height=256; const g=c.getContext('2d');
-  g.fillStyle='#cfe0c3'; g.fillRect(0,0,256,256); g.strokeStyle='rgba(0,0,0,.08)'; g.lineWidth=2; g.strokeRect(1,1,254,254);
+  g.fillStyle='#e9dfcb'; g.fillRect(0,0,256,256); g.strokeStyle='rgba(0,0,0,.07)'; g.lineWidth=2; g.strokeRect(1,1,254,254);
   const t=new THREE.CanvasTexture(c); t.wrapS=t.wrapT=THREE.RepeatWrapping; t.repeat.set(ROOM.W/60,ROOM.D/60); return t; }
 function boardTexture(lenCm,hCm){
   const c=document.createElement('canvas'); c.width=64; c.height=64; const g=c.getContext('2d');
@@ -715,9 +737,9 @@ function eyeView(where){
 
 /* ───────────── UI ───────────── */
 function setView(v){
-  if(v==='iso') v='3d';
+  if(v==='iso') v='3d'; if(v!=='plan' && v!=='3d') v='plan';
   state.view=v;
-  document.querySelectorAll('.tabs button').forEach(b=>b.setAttribute('aria-pressed', String(b.dataset.view===v)));
+  document.querySelectorAll('#viewTabs button').forEach(b=>b.setAttribute('aria-pressed', String(b.dataset.view===v)));
   const three = v!=='plan';
   plan.style.display=three?'none':'block'; gl.style.display=three?'block':'none';
   $('#btnReset').hidden=!three; $('#btnEyeBack').hidden=!three; $('#btnEyeWin').hidden=!three;
@@ -727,14 +749,14 @@ function setView(v){
   if(three){ if(!T3 && window.THREE) init3D(); else if(!T3) $('#nothree').style.display='grid'; resize3D(); invalidate(); }
   try{ localStorage.setItem(LS+'-view',v); }catch(e){}
 }
-document.querySelectorAll('.tabs button').forEach(b=>b.addEventListener('click',()=>setView(b.dataset.view)));
+document.querySelectorAll('#viewTabs button').forEach(b=>b.addEventListener('click',()=>setView(b.dataset.view)));
 $('#btnReset').addEventListener('click',()=>{ resetCam(); });
 $('#btnEyeBack').addEventListener('click',()=>eyeView('back'));
 $('#btnEyeWin').addEventListener('click',()=>eyeView('win'));
 
 function copyText(txt){ if(navigator.clipboard && window.isSecureContext){ return navigator.clipboard.writeText(txt); } const ta=document.createElement('textarea'); ta.value=txt; document.body.appendChild(ta); ta.select(); document.execCommand('copy'); ta.remove(); return Promise.resolve(); }
 $('#btnShare').addEventListener('click',()=>{ const url=location.origin+location.pathname+'#d='+encodeShare(); history.replaceState(null,'',url); copyText(url).then(()=>say('공유 링크를 복사했습니다')).catch(()=>{ $('#json').value=url; say('아래 칸에 링크를 넣었습니다. 직접 복사하세요'); }); });
-$('#btnExport').addEventListener('click',()=>{ const s=JSON.stringify({items:state.items,zones:state.zones,H:state.H,mat:!!state.opts.mat},null,1); $('#json').value=s; copyText(s).then(()=>say('JSON을 복사했습니다')).catch(()=>say('아래 칸에서 복사하세요')); });
+$('#btnExport').addEventListener('click',()=>{ const s=JSON.stringify({room:state.room,items:state.items,zones:state.zones,H:state.H,mat:!!state.opts.mat},null,1); $('#json').value=s; copyText(s).then(()=>say('JSON을 복사했습니다')).catch(()=>say('아래 칸에서 복사하세요')); });
 $('#btnImport').addEventListener('click',()=>{
   let v=$('#json').value.trim(); if(!v) return say('먼저 JSON이나 링크를 붙여넣으세요');
   try{
@@ -796,39 +818,43 @@ const LAYOUTS = {
     add({name:'알티노 보관함', w:90, d:45, h:120, x:50, y:23, rot:180, color:'#8a97a8'});
     // 도서용 책장 — 뒤 벽(서)에 붙여 교실 안쪽을 봄
     add({name:'도서용 책장', w:160, d:30, h:90, x:16, y:510, rot:90, color:'#d9bf94', shape:'cubby', cols:4, rows:2});
+    // 현수막 3장 — 뒤 벽(서) 게시판 위, 책상 높이(72 cm)부터 위로
+    [['현수막: 자율주행의 수학 원리',110,'#f7f4ea'],['현수막: 활동 방법',230,'#eef4f7'],['현수막: 교실 이용 안내',350,'#f7f0e6']].forEach(([name,y,color])=>add({name, w:100, d:1.5, h:150, x:2, y, z:72, rot:90, color}));
     return {items:L, zones:L.zones, mat:false};
   })(),
   '유아체험존': (()=>{
     const L=[]; const add=(o)=>L.push(Object.assign({rot:0,z:0,shape:'box'},o));
     // 입체도형 놀이 — 창문 쪽 앞 벽 근처에 유아용 원형 책상 2
-    [[720,197],[580,197]].forEach(([x,y])=>add({name:'유아 책상(원형)', w:90, d:90, h:50, x, y, color:'#f2d4a0', shape:'circle'}));
+    [[720,197],[580,197]].forEach(([x,y])=>add({name:'유아 책상(원형)', w:90, d:90, h:52, x, y, color:'#f4dcae', shape:'circle'}));
     // 미니 책상 2 — 복도 쪽
-    [[720,549],[580,549]].forEach(([x,y])=>add({name:'미니 책상', w:90, d:90, h:50, x, y, color:'#f2d4a0', shape:'circle'}));
+    [[720,549],[580,549]].forEach(([x,y])=>add({name:'미니 책상', w:90, d:90, h:52, x, y, color:'#f4dcae', shape:'circle'}));
     // 블록 성벽(부착) — 창문 벽 가운데 기둥에서 교실 안쪽으로 3.3 m
-    add({name:'블록 성벽(부착)', w:30, d:335, h:120, x:482, y:192, color:'#e9b44c'});
+    add({name:'블록 성벽(4D 블록)', w:30, d:300, h:90, x:482, y:175, color:'#f0a35e'}); // EVA 4D 블록으로 쌓은 낮은 성벽(유아 눈높이)
     // 블록 선반 — 창문 벽과 뒤 벽이 만나는 모서리
-    add({name:'블록 선반', w:90, d:40, h:90, x:50, y:22, rot:180, color:'#d9bf94', shape:'cubby', cols:3, rows:2});
+    add({name:'블록 선반(교구장)', w:90, d:35, h:75, x:50, y:20, rot:180, color:'#e6cfa3', shape:'cubby', cols:3, rows:2});
     // 자석 벽면 2장 — 앞 벽(동) 부착, 바닥에서 40 cm
-    add({name:'자석벽면 ② 골드버그 3세트', w:200, d:5, h:120, x:862, y:218, z:40, rot:90, color:'#e4e8ec'});
-    add({name:'자석벽면 ① 테셀레이션', w:220, d:5, h:120, x:862, y:578, z:40, rot:90, color:'#e4e8ec'});
+    add({name:'자석벽면 ② 골드버그 3세트', w:240, d:4, h:120, x:863, y:220, z:40, rot:90, color:'#eef1f3'}); // 철제 자석판 240×120, 바닥에서 40 cm
+    add({name:'자석벽면 ① 테셀레이션', w:180, d:4, h:120, x:863, y:580, z:40, rot:90, color:'#eef1f3'});
     // 옷걸이 · 사물함 — 뒤 벽(서) 입구 쪽
-    add({name:'옷걸이(유아용)', w:100, d:30, h:120, x:15, y:505, rot:90, color:'#c9a878'});
-    add({name:'유아 사물함', w:120, d:35, h:90, x:18, y:625, rot:90, color:'#b8c4cf', shape:'cubby', cols:4, rows:2});
+    add({name:'옷걸이(유아용)', w:90, d:35, h:110, x:18, y:500, rot:90, color:'#e6cfa3'});
+    add({name:'유아 사물함 8인용', w:92, d:35, h:90, x:18, y:610, rot:90, color:'#f6e7a1', shape:'cubby', cols:4, rows:2});
     return {items:L, mat:true, zones:[ {name:'입체도형 놀이', x1:520,x2:840,y1:40,y2:330}, {name:'블록놀이존 (4D Block)', x1:20,x2:440,y1:30,y2:360}, {name:'동화책 (붙박이 책장)', x1:200,x2:670,y1:640,y2:715} ]};
   })(),
 };
-function loadLayout(name, silent){
+function loadLayout(name, silent, quiet){
   const L=LAYOUTS[name]; if(!L) return;
-  if(!silent && state.items.length && !confirm(`현재 배치를 지우고 "${name}" 배치안을 불러올까요?`)) return;
-  state.items=L.items.map(o=>Object.assign({},o,{id:newId()})); state.zones=(L.zones||[]).map(z=>Object.assign({},z)); state.opts.mat=!!L.mat; syncOpts();
+  if(!silent && state.items.length && !confirm(`현재 배치를 지우고 "${name}" 배치안으로 되돌릴까요?`)) return;
+  state.items=L.items.map(o=>Object.assign({},o,{id:newId()})); state.zones=(L.zones||[]).map(z=>Object.assign({},z)); state.opts.mat=!!L.mat;
   state.sel=null; state.layout={name, ver:LAYOUT_VERS[name]||1, dirty:false};
-  save(); refresh(true); renderPlan(true); say(silent? `${name} 배치안이 새 버전으로 갱신됐습니다` : `${name} 배치안을 불러왔습니다`);
+  if(quiet) return; // 초기 로딩 중: 화면 갱신은 호출 쪽에서
+  syncOpts(); save(); refresh(true); renderPlan(true); say(silent? `${name} 배치안이 새 버전으로 갱신됐습니다` : `${name} 배치안으로 되돌렸습니다`);
 }
 // 저장본이 예전 버전 배치안이면: 손대지 않은 경우 자동 갱신, 손댔으면 안내만
 function checkLayoutVersion(){ const l=state.layout; if(!l || !LAYOUTS[l.name] || l.ver>=(LAYOUT_VERS[l.name]||1)) return;
   if(!l.dirty) setTimeout(()=>loadLayout(l.name,true),300);
   else setTimeout(()=>say(`"${l.name}" 배치안에 새 버전이 있습니다. 버튼을 누르면 갱신됩니다`),600); }
-document.querySelectorAll('[data-layout]').forEach(b=>b.addEventListener('click',()=>loadLayout(b.dataset.layout)));
+$('#btnLayout').addEventListener('click',()=>loadLayout(state.room));
+document.querySelectorAll('#roomTabs button').forEach(b=>b.addEventListener('click',()=>switchRoom(b.dataset.room)));
 function renderList(){
   $('#count').textContent = state.items.length? `${state.items.length}개` : '';
   if(!state.items.length){ listEl.innerHTML='<div class="empty">아직 가구가 없습니다. 위에서 추가하세요.</div>'; return; }
@@ -871,13 +897,14 @@ function refresh(rebuild){
 
 /* ───────────── 시작 ───────────── */
 load(); $('#inH').value=state.H;
+document.querySelectorAll('#roomTabs button').forEach(b=>b.setAttribute('aria-pressed', String(b.dataset.room===state.room)));
 document.querySelectorAll('[data-o]').forEach(cb=>cb.checked=!!state.opts[cb.dataset.o]);
 renderPlan(true); renderList(); fillEditor(); checkLayoutVersion();
 let v0='plan'; try{ v0=localStorage.getItem(LS+'-view')||'plan'; }catch(e){}
 if(location.hash.includes('d=')) v0='3d';
 // three.js 로딩 대기 (CDN 대체 로딩 포함)
-let waited=0; (function wait(){ if(window.THREE){ if(v0!=='plan') setView(v0); else setView('plan'); return; } waited+=100; if(waited>12000){ setView('plan'); return; } setTimeout(wait,100); })();
-setView(v0==='plan'?'plan':'plan'); // 평면도는 즉시 표시, 3D는 로딩 후 전환
+setView('plan'); // 평면도는 즉시 표시, 3D는 three.js 로딩 후 전환
+let waited=0; (function wait(){ if(window.THREE){ if(v0!=='plan') setView(v0); return; } waited+=100; if(waited>12000) return; setTimeout(wait,100); })();
 })();
 </script>
 </body>
